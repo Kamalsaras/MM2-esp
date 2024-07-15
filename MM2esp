@@ -1,0 +1,351 @@
+-- Configuration
+local gunName = "Gun"  -- Name of the gun tool
+local knifeName = "Knife"  -- Name of the knife tool
+local gunMarkerColor = Color3.fromRGB(0, 0, 255)  -- Blue color for the gun ESP marker
+local knifeMarkerColor = Color3.fromRGB(255, 0, 0)  -- Red color for the knife ESP marker
+local defaultMarkerColor = Color3.fromRGB(0, 255, 0)  -- Green color for players with no gun or knife
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local UIS = game:GetService("UserInputService")
+
+local espEnabled = false
+local espObjects = {}
+local autoKillEnabled = false
+local sheriffDeathPosition = nil
+
+-- Function to create ESP marker for a player
+local function createESP(player, color)
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+
+    -- Create body box
+    for _, part in pairs(character:GetChildren()) do
+        if part:IsA("BasePart") then
+            local box = Instance.new("BoxHandleAdornment")
+            box.Size = part.Size
+            box.Adornee = part
+            box.Color3 = color
+            box.AlwaysOnTop = true
+            box.ZIndex = 10
+            box.Transparency = 0.7
+            box.Parent = part
+
+            table.insert(espObjects, box)
+        end
+    end
+
+    -- Create name tag
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP"
+    billboard.Size = UDim2.new(0, 100, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+
+    local nameLabel = Instance.new("TextLabel", billboard)
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = color
+    nameLabel.TextScaled = true
+
+    billboard.Parent = character:FindFirstChild("HumanoidRootPart")
+    table.insert(espObjects, billboard)
+end
+
+-- Function to check player's inventory and character for the item
+local function checkInventory(player, itemName)
+    local backpack = player:FindFirstChild("Backpack")
+    local character = player.Character
+    if not backpack or not character then
+        return false
+    end
+
+    local itemInBackpack = backpack:FindFirstChild(itemName)
+    local itemInCharacter = character:FindFirstChild(itemName)
+    return itemInBackpack ~= nil or itemInCharacter ~= nil
+end
+
+-- Function to add ESP to a player based on their inventory
+local function addESP(player)
+    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        if checkInventory(player, gunName) then
+            createESP(player, gunMarkerColor)
+        elseif checkInventory(player, knifeName) then
+            createESP(player, knifeMarkerColor)
+        else
+            createESP(player, defaultMarkerColor)
+        end
+    end
+end
+
+-- Function to remove ESP markers
+local function clearESP()
+    for _, espObject in ipairs(espObjects) do
+        if espObject then
+            espObject:Destroy()
+        end
+    end
+    espObjects = {}
+end
+
+-- Function to toggle ESP
+local function toggleESP()
+    espEnabled = not espEnabled
+    clearESP()
+
+    if espEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            addESP(player)
+        end
+
+        Players.PlayerAdded:Connect(function(player)
+            player.CharacterAdded:Connect(function(character)
+                character:WaitForChild("HumanoidRootPart")
+                addESP(player)
+            end)
+        end)
+
+        Players.PlayerRemoving:Connect(function(player)
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local esp = player.Character:FindFirstChild("ESP")
+                if esp then
+                    esp:Destroy()
+                end
+            end
+        end)
+    end
+end
+
+-- Update ESP periodically
+RunService.Heartbeat:Connect(function()
+    if espEnabled then
+        clearESP()
+        for _, player in ipairs(Players:GetPlayers()) do
+            addESP(player)
+        end
+    end
+end)
+
+-- Function to teleport all players to the local player and spam knife attack
+local function autoKill()
+    while autoKillEnabled do
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                player.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(math.random(-2, 2), 0, math.random(-2, 2))
+                if LocalPlayer.Backpack:FindFirstChild(knifeName) then
+                    LocalPlayer.Backpack[knifeName].Parent = LocalPlayer.Character
+                end
+                local tool = LocalPlayer.Character:FindFirstChild(knifeName)
+                if tool then
+                    tool.Parent = LocalPlayer.Character
+                    tool:Activate()
+                end
+            end
+        end
+        wait(0.1)  -- Adjust the delay as needed
+    end
+end
+
+-- Create basic UI to toggle ESP and auto-kill
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ESP_UI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = StarterGui
+
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 320, 0, 280)
+mainFrame.Position = UDim2.new(0.5, -160, 0.5, -140)
+mainFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+local uiCorner = Instance.new("UICorner", mainFrame)
+uiCorner.CornerRadius = UDim.new(0, 10)
+
+local titleLabel = Instance.new("TextLabel", mainFrame)
+titleLabel.Size = UDim2.new(1, 0, 0, 50)
+titleLabel.Text = "Admin Panel"
+titleLabel.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+titleLabel.TextColor3 = Color3.new(1, 1, 1)
+titleLabel.TextScaled = true
+titleLabel.Font = Enum.Font.GothamBold
+
+local buttonFrame = Instance.new("Frame", mainFrame)
+buttonFrame.Size = UDim2.new(1, 0, 1, -50)
+buttonFrame.Position = UDim2.new(0, 0, 0, 50)
+buttonFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+buttonFrame.BorderSizePixel = 0
+
+local uiListLayout = Instance.new("UIListLayout", buttonFrame)
+uiListLayout.Padding = UDim.new(0, 10)
+uiListLayout.FillDirection = Enum.FillDirection.Vertical
+uiListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+uiListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+
+local toggleButton = Instance.new("TextButton", buttonFrame)
+toggleButton.Size = UDim2.new(0, 300, 0, 50)
+toggleButton.Text = "ESP Murder/Sherif (Only use after the Murder/Sherif have received their weapons)"
+toggleButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+
+-- Connect button click to toggle function
+toggleButton.MouseButton1Click:Connect(toggleESP)
+
+local autoKillButton = Instance.new("TextButton", buttonFrame)
+autoKillButton.Size = UDim2.new(0, 300, 0, 50)
+autoKillButton.Text = "Auto Kill All"
+autoKillButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+autoKillButton.TextColor3 = Color3.new(1, 1, 1)
+autoKillButton.TextScaled = true
+autoKillButton.Font = Enum.Font.GothamBold
+
+-- Connect button click to auto-kill function
+autoKillButton.MouseButton1Click:Connect(function()
+    autoKillEnabled = not autoKillEnabled
+    autoKillButton.Text = autoKillEnabled and "Stop Auto Kill" or "Auto Kill All"
+
+    if autoKillEnabled then
+        autoKill()
+    end
+end)
+
+local teleportFrame = Instance.new("Frame", buttonFrame)
+teleportFrame.Size = UDim2.new(0, 300, 0, 50)
+teleportFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+
+local teleportButton = Instance.new("TextButton", teleportFrame)
+teleportButton.Size = UDim2.new(1, 0, 1, 0)
+teleportButton.BackgroundTransparency = 0.5
+teleportButton.Text = "Teleport to Player"
+teleportButton.TextColor3 = Color3.new(1, 1, 1)
+teleportButton.TextScaled = true
+teleportButton.Font = Enum.Font.GothamBold
+
+local playerList = Instance.new("ScrollingFrame", screenGui)
+playerList.Size = UDim2.new(0, 300, 0, 150)
+playerList.Position = UDim2.new(0.5, -150, 0.5, 60)
+playerList.CanvasSize = UDim2.new(0, 0, 1, 0)
+playerList.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+playerList.ScrollBarThickness = 10
+playerList.Visible = false
+
+local function updatePlayerList()
+    playerList:ClearAllChildren()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        local playerButton = Instance.new("TextButton", playerList)
+        playerButton.Size = UDim2.new(1, -10, 0, 30)
+        playerButton.Position = UDim2.new(0, 5, 0, (#playerList:GetChildren() - 1) * 35)
+        playerButton.Text = player.Name
+        playerButton.TextColor3 = Color3.new(1, 1, 1)
+        playerButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+        playerButton.TextScaled = true
+        playerButton.Font = Enum.Font.GothamBold
+
+        playerButton.MouseButton1Click:Connect(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame
+                end
+            end
+        end)
+    end
+end
+
+-- Toggle player list visibility
+teleportButton.MouseButton1Click:Connect(function()
+    playerList.Visible = not playerList.Visible
+end)
+
+-- Initial UI setup
+updatePlayerList()
+
+-- Create "Take GunDrop" button
+local gunDropButton = Instance.new("TextButton", buttonFrame)
+gunDropButton.Size = UDim2.new(0, 300, 0, 50)
+gunDropButton.Text = "Take GunDrop"
+gunDropButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+gunDropButton.TextColor3 = Color3.new(1, 1, 1)
+gunDropButton.TextScaled = true
+gunDropButton.Font = Enum.Font.GothamBold
+
+gunDropButton.MouseButton1Click:Connect(function()
+    if sheriffDeathPosition then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = sheriffDeathPosition
+    end
+end)
+
+-- Function to monitor sheriff deaths and update the GunDrop button
+local function checkGunDrop()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            if character and character:FindFirstChild("Humanoid") then
+                character.Humanoid.Died:Connect(function()
+                    if checkInventory(player, gunName) then
+                        sheriffDeathPosition = character.HumanoidRootPart.CFrame
+                    end
+                end)
+            end
+        end
+    end
+end
+
+-- Monitor sheriff deaths continuously
+RunService.Heartbeat:Connect(function()
+    local hasGun = false
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            if checkInventory(player, gunName) then
+                hasGun = true
+                break
+            end
+        end
+    end
+
+    if not hasGun then
+        sheriffDeathPosition = nil
+    end
+end)
+
+checkGunDrop()
+
+-- Reapply UI and ESP on respawn
+local function onCharacterAdded(character)
+    wait(1)  -- Wait for the character to load
+    toggleESP()  -- Reapply ESP
+    updatePlayerList()  -- Update player list for teleport UI
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+
+-- Ensure UI and ESP are maintained on death
+LocalPlayer.AncestryChanged:Connect(function()
+    if LocalPlayer:IsDescendantOf(game) then
+        screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        toggleESP()
+    end
+end)
+
+LocalPlayer.CharacterRemoving:Connect(function()
+    autoKillEnabled = false
+    autoKillButton.Text = "Auto Kill All"
+end)
+
+-- Ensure UI and ESP persist on player reset
+StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
+
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+toggleESP()
